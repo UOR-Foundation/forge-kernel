@@ -13,36 +13,46 @@ These local results qualify the inspected workflow reconciliation only. Fresh co
 
 ## Reviewed browser inventory repair (2026-11-14)
 
-At main `6d8021ff583873fb51abcc4bdd5c8ec2d84ee06a`, #193 added
-`run node tools/plain_chat_layout_browser.mjs` to the storage/browser block.
-The fourth workflow control still expected 64 commands. The complete FA-24
-Node invocation reproduced 33 tests, 32 passes and one failure:
-`mandatory command count changed for Verify snapshot rollback in browser storage`
-(`65 !== 64`).
+Historical motivation: at main `6d8021ff583873fb51abcc4bdd5c8ec2d84ee06a`,
+#193 added `run node tools/plain_chat_layout_browser.mjs`. The fourth workflow
+control still expected 64 commands. The complete FA-24 Node invocation
+reproduced 33 tests, 32 passes and one failure: `mandatory command count changed
+for Verify snapshot rollback in browser storage` (`65 !== 64`).
 
-The repaired control pins nine host-scope and 65 storage/browser commands in
+Main then advanced to `16bf8c161a46df2755fcd139aedef237b5b15484` through #199,
+reverting #193 after its real preview-auto-start browser gate failed. This
+repair incorporates that main revision and keeps the rollback intact. Its
+prior 65-command inventory correctly rejected the newly removed command
+(three workflow controls passed, one failed) before reconciliation.
+
+The current control pins nine host-scope and 64 storage/browser commands in
 reviewed order, including interpreters and arguments. It checks uniqueness and
 exact equality, rather than only count or deriving the expectation from the
 workflow under test. Intended additions must update the reviewed inventory.
-Workflow commands, guards and failure aggregation are unchanged. The four
-top-level workflow tests and FA-24's exact 33-control requirement are unchanged.
-No product, model, SDK, kernel, identity or UI files change.
+Workflow commands, guards and failure aggregation are identical to current
+main. The four top-level workflow tests and FA-24's exact 33-control requirement
+are unchanged. Relative to that main revision, only this record and the workflow
+test change; no rolled-back layout, product, model, SDK, kernel or identity
+changes are restored.
 
 Negative controls remove and substitute each command, and reject unreviewed
 additions, same-count duplicate replacements and reordering. Full-workflow
-mutations remove, replace or conditionally skip the plain-chat command and
-fail on inventory mismatch or omitted execution. Existing fail-open, fail-fast
-and missing-prerequisite mutations remain active. A separate temporary test
-copy restoring count-only equality fails with `Missing expected exception` on
-an unreviewed same-count substitution. Mutated copies are not retained.
+mutations remove, replace or conditionally skip the retained
+`preview_auto_start_browser.mjs` command and fail on inventory mismatch or
+omitted execution. Existing fail-open, fail-fast and missing-prerequisite
+mutations remain active. A separate temporary test copy restoring count-only
+equality fails with `Missing expected exception` on an unreviewed same-count
+substitution. Mutated copies are not retained.
 
 Restored local results on Node 24.22.1:
 
 - `node --test studio/tools/backlog_workflows.test.mjs`: 4/4 passed.
 - `node --test --test-reporter=tap studio/tools/current_main_integration.test.mjs studio/tools/rules_transaction.test.mjs studio/tools/main_stateful_integration.test.mjs studio/tools/notation_host_integration.test.mjs studio/tools/backlog_workflows.test.mjs`: 33/33 passed, zero failures, cancellations, skips or todos.
+- The affected Studio step, `node --test tools/notation_host_integration.test.mjs tools/backlog_workflows.test.mjs tools/application_shape_authority.test.mjs tools/proof_approval_cancellation.test.mjs` from `studio/`: 33/33 passed, zero failures, cancellations, skips or todos.
 - `node --check studio/tools/backlog_workflows.test.mjs` and `git diff --check`: passed.
 
 These focused host-tool checks are not full release acceptance. Docker, Cargo
 and Just are unavailable here, so locked-SDK `just vv`, the Rust wrapper and
-the real browser lane have not run locally. Exact-head CI remains required
-before readiness or merge.
+the real browser lane have not run locally. Exact-head CI on the reconciled
+candidate remains required before readiness or merge; earlier-head results
+cannot qualify this reconciliation.

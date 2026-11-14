@@ -135,7 +135,6 @@ test("Studio collects independent browser failures without bypassing verified pr
       "run node tools/chat_model_picker_scope_browser.mjs",
       "run python3 tools/chat_mode_catalog_projection.py --check",
       "run node tools/browser_chat_mode_controls_browser.mjs",
-      "run node tools/plain_chat_layout_browser.mjs",
       "run node tools/chat_provider_routing_browser.mjs",
       "run node tools/preview_auto_start_browser.mjs",
       "run node tools/site_relay_authorization_browser.mjs",
@@ -187,10 +186,10 @@ test("Studio collects independent browser failures without bypassing verified pr
     assert.throws(() => auditCommands(script.replace(expected[0], expected[1]), expected, name), /duplicate mandatory command/);
     assert.throws(() => auditCommands([expected[1], expected[0], ...expected.slice(2)].join("\n"), expected, name), /inventory changed/);
   }
-  const plainChat = "          run node tools/plain_chat_layout_browser.mjs\n";
-  assert.throws(() => audit(studio.replace(plainChat, "")), /inventory changed/);
-  assert.throws(() => audit(studio.replace(plainChat, "          run node tools/unreviewed.mjs\n")), /inventory changed/);
-  assert.throws(() => audit(studio.replace(plainChat, `          if false; then\n${plainChat}          fi\n`)), /omitted later commands/);
+  const previewAutoStart = "          run node tools/preview_auto_start_browser.mjs\n";
+  assert.throws(() => audit(studio.replace(previewAutoStart, "")), /inventory changed/);
+  assert.throws(() => audit(studio.replace(previewAutoStart, "          run node tools/unreviewed.mjs\n")), /inventory changed/);
+  assert.throws(() => audit(studio.replace(previewAutoStart, `          if false; then\n${previewAutoStart}          fi\n`)), /omitted later commands/);
   assert.throws(() => audit(studio.replaceAll('exit "$status"', 'exit 0')), /did not fail/);
   assert.throws(() => audit(studio.replaceAll('"$@" || status=1', '"$@"')), /did not fail|omitted later commands/);
   assert.throws(() => audit(studio.replaceAll(guard, 'if: always()')), /unverified prerequisites/);
