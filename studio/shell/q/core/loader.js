@@ -69,6 +69,9 @@ export const MODELS = [
   // nonzero bit plane (manifest.tern) and YaRN rotary scaling (manifest.yarn, as the GGUF declares it).
   // Measured 2026-11-13 on a Radeon 8050S iGPU: 85-114 tok/s, greedy output byte-identical to llama.cpp on 4 of 5
   // prompts. spec stays off: the n-gram drafter measured slower here (31% of drafted tokens accepted).
+  // DEVICE MODEL: Qwen2.5-1.5B-Instruct, the GGUF Q4_K_M weights as engine 4-bit blocks (built with this
+  // engine's own qvac-ingest), one Range-streamed .holo. Chat and an app's rules (held to the spec grammar).
+  { fam: "Qwen2.5", name: "Qwen2.5-1.5B-Instruct · 4-bit", kappaUrl: "https://huggingface.co/HOLOGRAMTECH/q-qwen2.5-1.5b-instruct/resolve/main", holoUrl: "https://huggingface.co/HOLOGRAMTECH/q-qwen2.5-1.5b-instruct/resolve/main/q-qwen2.5-1.5b-instruct.v1.holo", size: "0.97 GB", fmt: "q4 κ", cap: 900, ctx: 3000, kv4: true, gpu: true, gpuOnly: true, chat: true, qwen: true, rep: 1.05, kappa: true },
   { fam: "TernaryBonsai", name: "Ternary-Bonsai-1.7B · ternary", kappaUrl: "https://huggingface.co/HOLOGRAMTECH/q-ternary-bonsai-1.7b/resolve/main", holoUrl: "https://huggingface.co/HOLOGRAMTECH/q-ternary-bonsai-1.7b/resolve/main/q-ternary-bonsai-1.7b.v1.holo", size: "0.42 GB", fmt: "q1+tern 2-bit κ", cap: 900, ctx: 3000, kv4: true, gpu: true, gpuOnly: true, chat: true, qwen: true, qwen3: true, rep: 1.05, kappa: true },
   // Qwen κ-objects (q3f/q4) were pruned from disk for space — re-derive via compile2bit, then re-list.
 ];
