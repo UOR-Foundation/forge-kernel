@@ -887,6 +887,12 @@ suite = "in-tab-kernel-verdict"
 statement = "A proof verdict is decided by the Prism guest from addresses the tab derived and the result of a kernel run in the tab, never from a server reply"
 
 [[id]]
+id = "FA-87"
+level = "build"
+suite = "prism-r4-route"
+statement = "A chat turn is answered only by Foundry's own model in Prism, and Prism R4 refuses every route to another model before the request leaves the tab"
+
+[[id]]
 id = "PM-01"
 level = "build"
 suite = "product-model"

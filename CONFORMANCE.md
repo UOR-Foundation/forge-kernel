@@ -417,6 +417,12 @@ model does not sanction.
 | --- | --- | --- |
 | `FA-39` | `build` | Networked previews require explicit source-bound permission with persistent revocation controls |
 
+## prism-r4-route
+
+| ID | Level | Statement |
+| --- | --- | --- |
+| `FA-87` | `build` | A chat turn is answered only by Foundry's own model in Prism, and Prism R4 refuses every route to another model before the request leaves the tab |
+
 ## private-provider-credentials
 
 | ID | Level | Statement |
