@@ -45,7 +45,8 @@ try {
   const disclosure=page.getByRole('dialog',{name:'Review cloud request',exact:true});await disclosure.waitFor();assert.equal(sent.length,0);assert.ok(JSON.parse(await disclosure.locator('pre').textContent()).messages[0].content.includes('ask mode'));await disclosure.getByRole('button',{name:'Send this request',exact:true}).click();
   const deadline=Date.now()+30000;while(true){const q=await get('refs',`chat-queue:${chatId}`);if(q?.receipts.some(r=>r.outcome==='completed')&&!q.state.active)break;assert.ok(Date.now()<deadline,'Ask must settle after preview decline');await new Promise(r=>setTimeout(r,20));}
   assert.equal(sent.length,1);assert.equal((await get('chats',chatId)).messages.length,before+2);assert.ok((await get('chats',chatId)).messages.at(-1).content.includes('ASK AFTER DECLINE'));
-  await page.getByTestId('preview-restart-button').click();await decline(2);assert.equal(await page.evaluate(()=>window.__previewPromptCount),2,'explicit retry must retain permission flow');await remount(2);
+  // A chat in Ask mode opens with its preview collapsed (tools/plain_chat_layout_browser.mjs): the header's toggle opens it for the explicit retry.
+  await page.getByTestId('toggle-preview-panel-button').click();await page.getByTestId('preview-restart-button').click();await decline(2);assert.equal(await page.evaluate(()=>window.__previewPromptCount),2,'explicit retry must retain permission flow');await remount(2);
   await page.reload();await decline(1);assert.equal(await page.evaluate(()=>window.__previewPromptCount),1,'full navigation creates a new run session');
   assert.deepEqual(errors,[]);console.log(JSON.stringify({profile:'foundry/preview-auto-start/1',initialStart:true,declineStable:true,responsiveRemounts:true,askAfterDecline:true,explicitRetry:true,reloadSession:true,pageErrors:errors}));
 } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
