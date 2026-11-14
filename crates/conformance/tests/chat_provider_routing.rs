@@ -21,8 +21,8 @@ fn chat_provider_routing_fa_81() {
         String::from_utf8_lossy(&output.stderr)
     );
     for required in [
-        "# tests 4",
-        "# pass 4",
+        "# tests 5",
+        "# pass 5",
         "# fail 0",
         "# cancelled 0",
         "# skipped 0",
