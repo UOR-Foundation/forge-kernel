@@ -61,6 +61,7 @@ import * as inference from "./inference.js";
 import { viewReady, lookup, routeOf, refusalWord, seal as sealAnswer, sealPaid, paidGenerate, gpuReady, gpuIds, heldFor, rulesModel, rememberSession, withEngine, engine, readWho, MODEL_ID, idOf, paidId, deviceKeyGet } from "./inference.js";
 import { install, installed, encodeView, b64, unb64, sha256 } from "./holo.js";
 import * as prism from "./prism.js";
+import * as specGrammar from "./spec-grammar.mjs";
 import * as live from "./live/project.mjs";
 import * as lexlean from "./live/lexlean.mjs";
 import { canonicalEditPath, planCanonicalEdit } from "./canonical-edits.mjs";
@@ -117,7 +118,7 @@ handlers.set("prompts:delete", input => promptLibrary("delete",input));
 
 // ---- settings
 const DEFAULT_SETTINGS = {
-  // A new visitor starts on GLM 5.3 Flash in the cloud (the site's shared Featherless key answers); Bonsai 1.7B
+  // A new visitor starts on GLM 5.3 Flash in the cloud (the site's shared Featherless key answers); Qwen2.5 1.5B
   // on the device is one click away in the model picker.
   selectedModel: { name: "zai-org/GLM-5.3-Flash", provider: "featherless" }, providerSettings: {}, telemetryConsent: "opted_out", telemetryUserId: "web",
   hasRunBefore: true, experiments: {}, enableProLazyEditsMode: false, enableProSmartFilesContextMode: false, selectedChatMode: "build",
@@ -186,14 +187,14 @@ const OPENROUTER_MODELS = [
 // The device is a provider the renderer counts as set up (a custom provider whose "environment variable" is
 // the GPU), so a machine with WebGPU needs no key before its first prompt.
 const LOCAL = { id: "local", name: "On your device", type: "custom", hasFreeTier: true, envVarName: "HOLOGRAM_DEVICE" };
-// The window is the engine's own (q/core/loader.js: Ternary Bonsai 1.7B, ctx 3000), not a round number: a build
+// The window is the engine's own (q/core/loader.js: Qwen2.5-1.5B-Instruct, ctx 3000), not a round number: a build
 // turn carries the project's files, so the renderer must know what actually fits.
-const LOCAL_MODELS = [{ apiName: MODEL_ID, displayName: "Bonsai 1.7B", description: "Runs on this browser's GPU; every answer is sealed on the device", contextWindow: 3000 }];
+const LOCAL_MODELS = [{ apiName: MODEL_ID, displayName: "Qwen2.5 1.5B", description: "Runs on this browser's GPU; every answer is sealed on the device", contextWindow: 3000 }];
 // Featherless: open-weight models behind an OpenAI chat endpoint that admits this origin. The key is the
 // visitor's, entered on the provider's settings page and kept on this device; the site carries none.
 const FEATHERLESS = { id: "featherless", name: "Featherless", hasFreeTier: false, websiteUrl: "https://featherless.ai/account/api-keys", gatewayPrefix: "featherless/", type: "cloud" };
 const FEATHERLESS_MODELS = [{ apiName: "zai-org/GLM-5.3-Flash", displayName: "GLM 5.3 Flash", description: "Z.ai's GLM 5.3 Flash on Featherless", contextWindow: 262144 }];
-// Two models are offered: GLM 5.3 Flash in the cloud (Featherless) and Bonsai 1.7B on the device. OpenRouter is
+// Two models are offered: GLM 5.3 Flash in the cloud (Featherless) and Qwen2.5 1.5B on the device. OpenRouter is
 // withdrawn from the picker and Settings for now; its models stay defined here, and the warm-up that answers
 // while the device model loads is unchanged.
 handlers.set("get-language-model-providers", () => [FEATHERLESS, LOCAL]);
@@ -1927,14 +1928,22 @@ async function chatTurn(chatId, intent) {
       // No repetition penalty: rules are JSON, which repeats its keys by nature, and a penalty pushes a
       // small model off valid syntax. The receipt records the penalty used, so the answer stays re-derivable.
       const maxNew = Math.min(held.model.cap, room);
-      const res = await withEngine(() => inst.generate(ids, { maxNew, repPenalty: 1, onToken: ({ text }) => { if (!abort.signal.aborted) onTextSoon(text); } }));
+      // A rules turn is held to the spec grammar (spec-grammar.mjs): every token keeps the answer a well-formed
+      // prism/spec/1 spec whose conditions name its own fields and whose answers are its own outcomes. Measured
+      // 2026-11-14, Qwen2.5-1.5B on ten requests: 8 of 10 passed checkSpec held to it, 0 of 10 without. The
+      // grammar fixes form, never meaning; the checker and the approval card still judge the rules.
+      const guided = execution.sourceEffects && inst.guidedAvailable;
+      const onToken = ({ text }) => { if (!abort.signal.aborted) onTextSoon(text); };
+      const res = await withEngine(() => guided
+        ? inst.generateGuided(ids, { maxNew, check: specGrammar.check, onToken, signal: abort.signal })
+        : inst.generate(ids, { maxNew, repPenalty: 1, onToken }));
       await settleText();
       const text = prism.withoutThinking(res.text);
       window.__prism.lastDevice = res.text || "";
       messages[messages.length - 1].model = idOf(held); // the model that wrote the rules
       rememberSession(deviceMessages, res, text, held.model);
       await enqueueText(!execution.sourceEffects || /<dyad-spec>/.test(text) ? text : text + "\n\nThe on-device model did not write rules for this app. Ask again with the inputs and the answers, or choose a paid model in the model picker.");
-      const rec = await inst.buildReceipt({ promptText: intent.prompt, ctxIds: [], turnIds: ids, outIds: res.outIds, paramsPatch: { repetitionPenalty: 1, maxTokens: maxNew } });
+      const rec = await inst.buildReceipt({ promptText: intent.prompt, ctxIds: [], turnIds: ids, outIds: res.outIds, paramsPatch: { repetitionPenalty: 1, maxTokens: maxNew, ...(guided ? { decode: "guided-greedy:" + specGrammar.GRAMMAR_ID } : {}) } });
       provenance = { receipt: await sealAnswer(body, rec, hit.key), fingerprint: `${(rec.body["prov:used"] || {})["holo:model"]}` };
     }
     // T6: completed batches have their own committed snapshots.

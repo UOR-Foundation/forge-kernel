@@ -176,6 +176,58 @@ export async function createEngine(modelEntry, loaded) {
     return { text, outIds, ids, stats: { ttft, tokps, msExec }, error: err };
   }
 
+  // GUIDED decode: greedy, but each step takes the highest-scoring token whose text keeps `check(text)` from
+  // answering "fail" ("partial" goes on, "done" stops). The grammar fixes form, never meaning. Deterministic for
+  // a given check, so a receipt that names the grammar re-derives (reDerive with the same check).
+  // A token's text is decoded after an anchor token, so a leading space survives.
+  let _anchor = null;
+  const tokenText = new Map();
+  const textOf = (id) => {
+    if (!_anchor) { const a = tokenize("x")[0]; _anchor = { id: a, text: detokenize([a]) }; }
+    let t = tokenText.get(id);
+    if (t === undefined) { const s = detokenize([_anchor.id, id]); t = s.startsWith(_anchor.text) ? s.slice(_anchor.text.length) : ""; tokenText.set(id, t); }
+    return t;
+  };
+  const TOP = 512;
+  async function guidedDecode(prompt, maxNew, check, { onToken, signal } = {}) {
+    gpu.reset();
+    await gpu.sync(prompt.slice(0, -1));
+    let logits = await gpu.step(prompt[prompt.length - 1]);
+    const out = []; let text = "", state = "partial";
+    while (out.length < maxNew && state !== "done" && !(signal && signal.aborted)) {
+      // candidates in descending score: the top TOP first, then every token
+      const sorted = Float32Array.from(logits).sort(), cut = sorted[Math.max(0, sorted.length - TOP)];
+      let cands = []; for (let t = 0; t < logits.length; t++) if (logits[t] >= cut) cands.push(t);
+      cands.sort((a, b) => logits[b] - logits[a] || a - b);
+      let pick = -1;
+      for (let pass = 0; pass < 2 && pick < 0; pass++) {
+        if (pass === 1) cands = Array.from(logits.keys()).sort((a, b) => logits[b] - logits[a] || a - b);
+        for (const t of cands) {
+          const s = textOf(t);
+          if (!s) continue;
+          const st = check(text + s);
+          if (st !== "fail") { pick = t; text += s; state = st; break; }
+        }
+      }
+      if (pick < 0) break;
+      out.push(pick);
+      if (onToken) onToken({ text, outIds: out.slice() });
+      if (state === "done") break;
+      logits = await gpu.step(pick);
+    }
+    gpu.reset();
+    return { outIds: out, text, done: state === "done" };
+  }
+  async function generateGuided(ids, { check, onToken, signal, maxNew } = {}) {
+    if (!gpu.sync || !gpu.step) throw new Error("this engine has no guided decode");
+    const tStart = _perf();
+    const newCap = Math.min(maxNew ?? m.cap ?? 80, (m.ctx || m.cap || 80) + 8 - ids.length - 1);
+    let first = 0;
+    const r = await guidedDecode(ids, newCap, check, { signal, onToken: (x) => { if (!first) first = _perf(); if (onToken) onToken({ ...x, ids: ids.concat(x.outIds), stats: { ttft: first - tStart } }); } });
+    const dt = _perf() - (first || tStart);
+    return { text: r.text, outIds: r.outIds, ids: ids.concat(r.outIds), stats: { ttft: first ? first - tStart : 0, tokps: r.outIds.length > 1 && dt > 0 ? (r.outIds.length - 1) / (dt / 1000) : 0 }, error: r.done ? null : new Error("the guided decode stopped before the grammar was complete") };
+  }
+
   // DIFFUSION decode (Dream-class): iterative bidirectional unmasking over a fixed `steps` budget,
   // wall-clock fixed by steps not output length. Greedy ⇒ deterministic ⇒ κ-re-derivable (Law L5).
   // `ids` is the framed prompt; we diffuse `genLen` masked positions after it. Returns the same shape
@@ -210,13 +262,17 @@ export async function createEngine(modelEntry, loaded) {
   }
 
   // Re-derivation (greedy only): re-run the exact inference and reproduce κ(output) byte-for-byte.
-  async function reDerive(rec) {
+  // A guided receipt (decode "guided-greedy:<grammar id>") re-derives only with that grammar's check.
+  async function reDerive(rec, { check } = {}) {
     if (!gpu) return { ok: false, reason: "load the model to re-derive" };
     if (/sampled/.test(rec.params.decode)) return { ok: false, reason: "sampled decode — only the κ-binding is verifiable, not re-derivation" };
+    const guided = /^guided-greedy:/.test(rec.params.decode || "");
+    if (guided && !check) return { ok: false, reason: "guided decode — pass the check of " + rec.params.decode.slice("guided-greedy:".length) };
     try {
       let seq = rec.ctxIds.concat(rec.turnIds); const start = seq.length;
       gpu.reset();
-      seq = await (gpu.decode || gpu.generate)(seq, rec.outIds.length, rec.params.repetitionPenalty);   // same head as the live path — replay must match byte-for-byte
+      if (guided) seq = seq.concat((await guidedDecode(seq, rec.outIds.length, check)).outIds);
+      else seq = await (gpu.decode || gpu.generate)(seq, rec.outIds.length, rec.params.repetitionPenalty);   // same head as the live path — replay must match byte-for-byte
       const got = await kappaTokens(seq.slice(start)), want = rec.body["prov:generated"]["holo:outputTokens"];
       return { ok: got === want, got, want };
     } finally { try { gpu.reset(); } catch {} }
@@ -226,6 +282,7 @@ export async function createEngine(modelEntry, loaded) {
     model: m, dims: gpu.dims, modelKappa, bosId: info?.bos ?? null, get gpuBytes() { return gpu.gpuBytes; },
     tokenize, detokenize, fingerprint, frameTurn, params,
     generate,
+    generateGuided, guidedAvailable: !!(gpu && gpu.sync && gpu.step),
     // register/clear the learned speculative drafter (fn(seq,max)=>ids). Off by default; safe fallback.
     setDrafter: (fn) => { _drafter = fn || null; try { gpu.setDrafter && gpu.setDrafter(_drafter); } catch (e) {} },
     specAvailable: !!(gpu.specDecode && gpu.setDrafter),
